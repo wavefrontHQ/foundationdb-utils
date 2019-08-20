@@ -152,30 +152,42 @@ public abstract class CollectKeyValuesUntilDone {
     }
     return batchReader.getRangeAsync(tx ->
         tx.getRange(startRange, endRange, batchSize, false, StreamingMode.WANT_ALL)).
-        thenComposeAsync(new Function<>() {
+        thenApply(keyValues -> {
+          if (metrics != null) {
+            long elapsed = System.currentTimeMillis() - start.get();
+            metrics.keyValuesScanned(keyValues.size(), elapsed);
+          }
+          return keyValues;
+        }).thenComposeAsync(
+        new Function<>() {
           @Override
           public CompletionStage<T> apply(List<KeyValue> keyValues) {
+            CompletableFuture<List<KeyValue>> nextBatch = null;
+            boolean done = keyValues.size() < batchSize;
+            if (!done) {
+              if (metrics != null) {
+                start.set(System.currentTimeMillis());
+                metrics.scanIssued();
+              }
+              KeyValue lastKeyValue = keyValues.get(keyValues.size() - 1);
+              nextBatch = batchReader.getRangeAsync(
+                  tx -> tx.getRange(KeySelector.firstGreaterThan(lastKeyValue.getKey()),
+                      endRange, batchSize, false, StreamingMode.WANT_ALL)).
+                  thenApply(kvs -> {
+                    if (metrics != null) {
+                      long elapsed = System.currentTimeMillis() - start.get();
+                      metrics.keyValuesScanned(keyValues.size(), elapsed);
+                    }
+                    return kvs;
+                  });
+            }
             if (!keyValues.isEmpty()) {
               intermediate.set(accumulator.apply(intermediate.get(), keyValues));
             }
-            if (metrics != null) {
-              long elapsed = System.currentTimeMillis() - start.get();
-              metrics.keyValuesScanned(keyValues.size(), elapsed);
-            }
-            if (keyValues.size() < batchSize) {
+            if (done) {
               return CompletableFuture.completedFuture(finalizer.apply(intermediate.get()));
             }
-            if (metrics != null) {
-              start.set(System.currentTimeMillis());
-            }
-            if (metrics != null) {
-              metrics.scanIssued();
-            }
-            KeyValue lastKeyValue = keyValues.get(keyValues.size() - 1);
-            return batchReader.getRangeAsync(
-                tx -> tx.getRange(KeySelector.firstGreaterThan(lastKeyValue.getKey()),
-                    endRange, batchSize, false, StreamingMode.WANT_ALL)).
-                thenComposeAsync(this, executor);
+            return nextBatch.thenComposeAsync(this, executor);
           }
         }, executor);
   }
