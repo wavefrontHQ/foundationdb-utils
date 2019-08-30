@@ -285,7 +285,7 @@ public class BatchReader {
         currentTxn.get().snapshot().get(key));
     final AtomicBoolean retryOnNull = new AtomicBoolean(false);
     final BiFunction<? super byte[], Throwable, ? extends byte[]> onReadyFn =
-        new BiFunction<>() {
+        new BiFunction<byte[], Throwable, byte[]>() {
           @Override
           public byte[] apply(byte[] result, Throwable error) {
             Transaction toDispose = currentTxn.get();
@@ -372,7 +372,7 @@ public class BatchReader {
     final AtomicReference<CompletableFuture<List<KeyValue>>> fetchFuture = new AtomicReference<>(
         asyncIterable.asList());
     final BiFunction<? super List<KeyValue>, Throwable, ? extends List<KeyValue>> onReadyFn =
-        new BiFunction<>() {
+        new BiFunction<List<KeyValue>, Throwable, List<KeyValue>>() {
           @Override
           public List<KeyValue> apply(List<KeyValue> result, Throwable error) {
             Transaction toDispose = currentTxn.get();

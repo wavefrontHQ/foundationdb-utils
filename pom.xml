@@ -9,7 +9,7 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
-        <jdk.version>11</jdk.version>
+        <jdk.version>8</jdk.version>
     </properties>
 
     <description>Java utilities for interacting with FoundationDB</description>

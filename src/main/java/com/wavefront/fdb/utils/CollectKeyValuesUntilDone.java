@@ -159,7 +159,7 @@ public abstract class CollectKeyValuesUntilDone {
           }
           return keyValues;
         }).thenComposeAsync(
-        new Function<>() {
+        new Function<List<KeyValue>, CompletionStage<T>>() {
           @Override
           public CompletionStage<T> apply(List<KeyValue> keyValues) {
             CompletableFuture<List<KeyValue>> nextBatch = null;
