@@ -146,6 +146,22 @@ public class BatchReader {
   }
 
   /**
+   * @return The read version that forms the lower bound for all subsequent reads of this batch reader. Since we recycle
+   * transactions rapidly, this call does <b>not</b> return the read version used for subsequent calls to
+   * {@link #getAsync(byte[])} or {@link #getRangeAsync(Function)}. Reads would be guaranteed to be using
+   * a read version at or beyond the result of this call. WARNING: calling this <b>after</b> reads (which might
+   * sometimes end up with the same transaction) should not yield any meaning.
+   */
+  public long getReadVersion() {
+    Transaction txn = getTransaction();
+    try {
+      return txn.getReadVersion().join();
+    } finally {
+      releaseTransaction(txn);
+    }
+  }
+
+  /**
    * Dispose the specified transaction but only if it's the currently active one..
    *
    * @param toDispose Transaction to dispose.
