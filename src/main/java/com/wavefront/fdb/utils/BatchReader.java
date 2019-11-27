@@ -152,13 +152,12 @@ public class BatchReader {
    * a read version at or beyond the result of this call. WARNING: calling this <b>after</b> reads (which might
    * sometimes end up with the same transaction) should not yield any meaning.
    */
-  public long getReadVersion() {
+  public CompletableFuture<Long> getReadVersion() {
     Transaction txn = getTransaction();
-    try {
-      return txn.getReadVersion().join();
-    } finally {
+    return txn.getReadVersion().thenApply(version -> {
       releaseTransaction(txn);
-    }
+      return version;
+    });
   }
 
   /**
