@@ -107,6 +107,35 @@ public abstract class CollectKeyValuesUntilDone {
    * result of the finalizer. Any errors during iteration of runtime errors in the supplied lambdas
    * will also complete this future exceptionally.
    */
+  public static <T, U> CompletableFuture<T> collect(
+      KeySelector startRange, KeySelector endRange, int batchSize,
+      @Nullable Metrics metrics, BatchReader batchReader,
+      Supplier<U> supplier, BiFunction<U, List<KeyValue>, U> accumulator,
+      Function<U, T> finalizer, Executor executor,
+      @SuppressWarnings("unused") boolean batchPriority) {
+    return collect(startRange, endRange, batchSize, metrics, batchReader, supplier, accumulator, finalizer, executor,
+        batchPriority, false);
+  }
+
+  /**
+   * Scan a large range of keys, instantiate a data structure to collect key values (supplier),
+   * accumulate results (accumulator) and then finalize it into a data structure to return.
+   *
+   * @param startRange  Start key range.
+   * @param endRange    End key range.
+   * @param batchSize   Batch size (e.g. 1000). If this value is too large, the transaction may
+   *                    time-out.
+   * @param metrics     Scan metrics.
+   * @param batchReader {@link BatchReader} to execute scans.
+   * @param supplier    Supplier of the data structure for the accumulator to work on.
+   * @param accumulator Accumulator that takes in the supplier's data structure and a list of key
+   *                    values.
+   * @param executor    Executor for callbacks.
+   * @param <T>         The returned object.
+   * @return CompletableFuture of T that is completed (exceptionally or successfully) based on the
+   * result of the finalizer. Any errors during iteration of runtime errors in the supplied lambdas
+   * will also complete this future exceptionally.
+   */
   public static <T> CompletableFuture<T> collect(
       KeySelector startRange, KeySelector endRange, int batchSize,
       @Nullable Metrics metrics, BatchReader batchReader,
@@ -144,21 +173,24 @@ public abstract class CollectKeyValuesUntilDone {
       @Nullable Metrics metrics, BatchReader batchReader,
       Supplier<U> supplier, BiFunction<U, List<KeyValue>, U> accumulator,
       Function<U, T> finalizer, Executor executor,
-      @SuppressWarnings("unused") boolean batchPriority) {
+      @SuppressWarnings("unused") boolean batchPriority, boolean readSystemKeys) {
     AtomicReference<U> intermediate = new AtomicReference<>(supplier.get());
     AtomicLong start = new AtomicLong(System.currentTimeMillis());
     if (metrics != null) {
       metrics.scanIssued();
     }
-    return batchReader.getRangeAsync(tx ->
-        tx.getRange(startRange, endRange, batchSize, false, StreamingMode.WANT_ALL)).
-        thenApply(keyValues -> {
-          if (metrics != null) {
-            long elapsed = System.currentTimeMillis() - start.get();
-            metrics.keyValuesScanned(keyValues.size(), elapsed);
-          }
-          return keyValues;
-        }).thenComposeAsync(
+    return batchReader.getRangeAsync(tx -> {
+      if (readSystemKeys) {
+        tx.options().setReadSystemKeys();
+      }
+      return tx.getRange(startRange, endRange, batchSize, false, StreamingMode.WANT_ALL);
+    }).thenApply(keyValues -> {
+      if (metrics != null) {
+        long elapsed = System.currentTimeMillis() - start.get();
+        metrics.keyValuesScanned(keyValues.size(), elapsed);
+      }
+      return keyValues;
+    }).thenComposeAsync(
         new Function<List<KeyValue>, CompletionStage<T>>() {
           @Override
           public CompletionStage<T> apply(List<KeyValue> keyValues) {
