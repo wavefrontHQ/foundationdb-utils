@@ -203,8 +203,13 @@ public abstract class CollectKeyValuesUntilDone {
               }
               KeyValue lastKeyValue = keyValues.get(keyValues.size() - 1);
               nextBatch = batchReader.getRangeAsync(
-                  tx -> tx.getRange(KeySelector.firstGreaterThan(lastKeyValue.getKey()),
-                      endRange, batchSize, false, StreamingMode.WANT_ALL)).
+                  tx -> {
+                    if (readSystemKeys) {
+                      tx.options().setReadSystemKeys();
+                    }
+                    return tx.getRange(KeySelector.firstGreaterThan(lastKeyValue.getKey()),
+                        endRange, batchSize, false, StreamingMode.WANT_ALL);
+                  }).
                   thenApply(kvs -> {
                     if (metrics != null) {
                       long elapsed = System.currentTimeMillis() - start.get();
