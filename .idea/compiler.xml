@@ -9,5 +9,8 @@
         <module name="foundationdb-utils" />
       </profile>
     </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="foundationdb-utils" target="8" />
+    </bytecodeTargetLevel>
   </component>
 </project>

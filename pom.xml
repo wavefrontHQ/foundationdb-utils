@@ -46,7 +46,7 @@
         <dependency>
             <groupId>org.foundationdb</groupId>
             <artifactId>fdb-java</artifactId>
-            <version>6.1.9</version>
+            <version>6.2.22</version>
         </dependency>
         <dependency>
             <groupId>com.google.code.findbugs</groupId>
