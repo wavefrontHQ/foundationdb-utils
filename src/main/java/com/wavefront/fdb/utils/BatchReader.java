@@ -13,7 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.concurrent.locks.StampedLock;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -52,7 +52,7 @@ public class BatchReader {
   /**
    * Monitor for protecting access to {@link #transaction}
    */
-  private final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+  private final StampedLock lock = new StampedLock();
   /**
    * The FDB database we are working with.
    */
@@ -132,7 +132,7 @@ public class BatchReader {
     if (transaction == null) {
       return false;
     }
-    lock.writeLock().lock();
+    long writeLock = lock.writeLock();
     try {
       if (transaction != null) {
         setTransactionToNull();
@@ -141,7 +141,7 @@ public class BatchReader {
         return false;
       }
     } finally {
-      lock.writeLock().unlock();
+      lock.unlockWrite(writeLock);
     }
   }
 
@@ -170,7 +170,7 @@ public class BatchReader {
     if (transaction != toDispose) {
       return false;
     }
-    lock.writeLock().lock();
+    long writeLock = lock.writeLock();
     try {
       if (transaction == toDispose) {
         setTransactionToNull();
@@ -179,7 +179,7 @@ public class BatchReader {
         return false;
       }
     } finally {
-      lock.writeLock().unlock();
+      lock.unlockWrite(writeLock);
     }
   }
 
@@ -208,32 +208,32 @@ public class BatchReader {
    * @return Transaction to use for reads.
    */
   private Transaction getTransaction() {
-    lock.readLock().lock();
+    long stamp = lock.readLock();
     try {
       if (transaction == null || lastTransactionCreationTime < System.currentTimeMillis() - ttlMilliseconds) {
-        lock.readLock().unlock();
-        lock.writeLock().lock();
+        long ws = lock.tryConvertToWriteLock(stamp);
+        if (ws != 0) {
+          stamp = ws;
+        } else {
+          lock.unlockRead(stamp);
+          stamp = lock.writeLock();
+        }
         Transaction curr = transaction;
-        try {
-          if (curr == null || disposeTransactionIfCurrent(curr)) {
-            metrics.transactionCreated();
-            lastTransactionCreationTime = System.currentTimeMillis();
-            // we keep the transaction and not the read transaction so that we can sloe it properly.
-            transaction = database.createTransaction();
-            // we would never attempt writes with this transaction.
-            transaction.options().setReadYourWritesDisable();
-            transaction.options().setSnapshotRywDisable();
-          }
-        } finally {
-          lock.readLock().lock();
-          lock.writeLock().unlock();
+        if (curr == null || disposeTransactionIfCurrent(curr)) {
+          metrics.transactionCreated();
+          lastTransactionCreationTime = System.currentTimeMillis();
+          // we keep the transaction and not the read transaction so that we can sloe it properly.
+          transaction = database.createTransaction();
+          // we would never attempt writes with this transaction.
+          transaction.options().setReadYourWritesDisable();
+          transaction.options().setSnapshotRywDisable();
         }
       }
       // mark the new transaction as used.
       activeTransactions.computeIfAbsent(transaction, tx -> new AtomicLong()).incrementAndGet();
       return transaction;
     } finally {
-      lock.readLock().unlock();
+      lock.unlock(stamp);
     }
   }
 
@@ -241,7 +241,7 @@ public class BatchReader {
     final AtomicLong refCounter = activeTransactions.get(txn);
     if (refCounter != null && refCounter.decrementAndGet() == 0) {
       // all references are cleared but we might still be the active transaction check.
-      lock.readLock().lock();
+      long stamp = lock.readLock();
       try {
         if (transaction != txn) {
           // we are done.
@@ -253,7 +253,7 @@ public class BatchReader {
           activeTransactions.remove(txn);
         }
       } finally {
-        lock.readLock().unlock();
+        lock.unlockRead(stamp);
       }
     }
   }
