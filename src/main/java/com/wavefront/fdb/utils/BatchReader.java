@@ -166,11 +166,11 @@ public class BatchReader {
    * @param toDispose Transaction to dispose.
    * @return Whether the transaction is the currently active one and was disposed.
    */
-  private boolean disposeTransactionIfCurrent(@Nonnull Transaction toDispose) {
+  private boolean disposeTransactionIfCurrent(@Nonnull Transaction toDispose, boolean needsWriteLock) {
     if (transaction != toDispose) {
       return false;
     }
-    long writeLock = lock.writeLock();
+    long writeLock = needsWriteLock ? lock.writeLock() : 0;
     try {
       if (transaction == toDispose) {
         setTransactionToNull();
@@ -179,7 +179,9 @@ public class BatchReader {
         return false;
       }
     } finally {
-      lock.unlockWrite(writeLock);
+      if (needsWriteLock) {
+        lock.unlockWrite(writeLock);
+      }
     }
   }
 
@@ -219,7 +221,7 @@ public class BatchReader {
           stamp = lock.writeLock();
         }
         Transaction curr = transaction;
-        if (curr == null || disposeTransactionIfCurrent(curr)) {
+        if (curr == null || disposeTransactionIfCurrent(curr, false)) {
           metrics.transactionCreated();
           lastTransactionCreationTime = System.currentTimeMillis();
           // we keep the transaction and not the read transaction so that we can sloe it properly.
@@ -317,7 +319,7 @@ public class BatchReader {
                     return null;
                   }
                   // start a new txn and try again(since it's a RetryableError)
-                  disposeTransactionIfCurrent(toDispose);
+                  disposeTransactionIfCurrent(toDispose, true);
                   currentTxn.set(getTransaction());
                   final CompletableFuture<byte[]> newFuture = currentTxn.get().snapshot().get(key);
                   fetchFuture.set(newFuture);
@@ -331,7 +333,7 @@ public class BatchReader {
                 if (retryOnNulls && !retryOnNull.get() && result == null) {
                   // try again with a new transaction if the result is null.
                   retryOnNull.set(true);
-                  disposeTransactionIfCurrent(toDispose);
+                  disposeTransactionIfCurrent(toDispose, true);
                   currentTxn.set(getTransaction());
                   final CompletableFuture<byte[]> newFuture = currentTxn.get().snapshot().get(key);
                   fetchFuture.set(newFuture);
@@ -404,7 +406,7 @@ public class BatchReader {
                     return null;
                   }
                   // start a new txn and try again(since it's a RetryableError)
-                  disposeTransactionIfCurrent(toDispose);
+                  disposeTransactionIfCurrent(toDispose, true);
                   currentTxn.set(getTransaction());
                   final AsyncIterable<KeyValue> asyncIterator = getRangeFunction.apply(
                       currentTxn.get().snapshot());
