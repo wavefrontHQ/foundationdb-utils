@@ -9,6 +9,10 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -35,7 +39,14 @@ public class BatchReader {
    * Default number of attempts for retryable (error code >=2000 and <3000) errors.
    */
   public static final int DEFAULT_MAX_ATTEMPTS = 3;
-
+  /**
+   * Default max wait time in backoff algorithm in milliseconds.
+   */
+  protected static final long DEFAULT_WAIT_MAX_MILLISECONDS = 10000;
+  /**
+   * Default wait base time in backoff algorithm in milliseconds.
+   */
+  protected static final int DEFAULT_WAIT_BASE_MILLISECONDS = 100;
   /**
    * Current transaction that can be used to service gets. May be null.
    */
@@ -69,6 +80,14 @@ public class BatchReader {
    * Interface to call in order to generate metrics for batch reader operations.
    */
   private final Metrics metrics;
+  /**
+   * Max wait time in backoff algorithm in milliseconds.
+   */
+  private final long maxWaitTime;
+  /**
+   * Single Thread Executor to schedule retry task.
+   */
+  private final ScheduledExecutorService ses = Executors.newSingleThreadScheduledExecutor();
 
   /**
    * Construct a new batch reader.
@@ -76,12 +95,14 @@ public class BatchReader {
    * @param database                   Database to batch range scans and gets for.
    * @param defaultMaxAttempts         Max retry attempts for gets and scans.
    * @param transactionTtlMilliseconds Transaction TTL in milliseconds.
+   * @param maxWaitTime                Max wait time in milliseconds for backoff algorithm.
    * @param metrics                    Metrics interface to report metrics.
    */
-  public BatchReader(Database database, int defaultMaxAttempts, int transactionTtlMilliseconds, Metrics metrics) {
+  public BatchReader(Database database, int defaultMaxAttempts, int transactionTtlMilliseconds, long maxWaitTime, Metrics metrics) {
     if (database == null) throw new NullPointerException();
     if (defaultMaxAttempts < 1) throw new IllegalArgumentException("defaultMaxAttempts must be >= 1");
     if (transactionTtlMilliseconds < 0) throw new IllegalArgumentException("transactionTtlMilliseconds must be >= 0");
+    if (maxWaitTime < 0) throw new IllegalArgumentException("maxWaitTime must be >= 0");
     if (metrics == null) {
       metrics = new Metrics() {
       };
@@ -89,6 +110,7 @@ public class BatchReader {
     this.database = database;
     this.defaultMaxAttempts = defaultMaxAttempts;
     this.ttlMilliseconds = transactionTtlMilliseconds;
+    this.maxWaitTime = maxWaitTime;
     this.metrics = metrics;
   }
 
@@ -98,8 +120,12 @@ public class BatchReader {
    * @param database Database we are working with.
    */
   public BatchReader(Database database) {
-    this(database, DEFAULT_MAX_ATTEMPTS, DEFAULT_TRANSACTION_TTL_MILLISECONDS, new Metrics() {
+    this(database, DEFAULT_MAX_ATTEMPTS, DEFAULT_TRANSACTION_TTL_MILLISECONDS, DEFAULT_WAIT_MAX_MILLISECONDS, new Metrics() {
     });
+  }
+
+  public BatchReader(Database database, int defaultMaxAttempts, int transactionTtlMilliseconds, Metrics metrics) {
+    this(database, defaultMaxAttempts, transactionTtlMilliseconds, DEFAULT_WAIT_MAX_MILLISECONDS, metrics);
   }
 
   /**
@@ -282,7 +308,7 @@ public class BatchReader {
   }
 
   /**
-   * Read a key with a limit of maximum number of retryable attempts.
+   * Read a key with a limit of maximum number of retryable attempts. Exponential backoff is applied between each retry.
    *
    * @param key          Key to read.
    * @param maxAttempts  Max number of retries if fdb returns a retryable error.
@@ -323,7 +349,8 @@ public class BatchReader {
                   currentTxn.set(getTransaction());
                   final CompletableFuture<byte[]> newFuture = currentTxn.get().snapshot().get(key);
                   fetchFuture.set(newFuture);
-                  newFuture.handle(this);
+                  newFuture.handleAsync(this,
+                          CompletableFuture.delayedExecutor(getWaitTimeWithJitter(attempted), TimeUnit.MILLISECONDS, ses));
                 } else {
                   metrics.getErrors();
                   toReturn.completeExceptionally(new RuntimeException("nonRetryableError in " +
@@ -337,6 +364,7 @@ public class BatchReader {
                   currentTxn.set(getTransaction());
                   final CompletableFuture<byte[]> newFuture = currentTxn.get().snapshot().get(key);
                   fetchFuture.set(newFuture);
+                  // start the retry immediately since there is no error
                   newFuture.handle(this);
                 } else {
                   toReturn.complete(result);
@@ -359,8 +387,8 @@ public class BatchReader {
   }
 
   /**
-   * Read a range of keys by providing a function that given a {@link ReadTransaction} return an {@link AsyncIterable}
-   * (for example, {@link ReadTransaction#getRange(Range)}).
+   * Read a range of keys with a limit of maximum number of retryable attempts by providing a function that given a
+   * {@link ReadTransaction} return an {@link AsyncIterable} (for example, {@link ReadTransaction#getRange(Range)}).
    *
    * @param getRangeFunction The function to produce an {@link AsyncIterable}.
    * @return {@link CompletableFuture} for the value of the key.
@@ -371,8 +399,9 @@ public class BatchReader {
   }
 
   /**
-   * Read a range of keys by providing a function that given a {@link ReadTransaction} return an {@link AsyncIterable}
-   * (for example, {@link ReadTransaction#getRange(Range)}).
+   * Read a range of keys with a limit of maximum number of retryable attempts by providing a function that given a
+   * {@link ReadTransaction} return an {@link AsyncIterable} (for example, {@link ReadTransaction#getRange(Range)}).
+   * Exponential backoff is applied between each retry.
    *
    * @param getRangeFunction The function to produce an {@link AsyncIterable}.
    * @param maxAttempts      The maximum number of attempts to make if fdb throws a retryable error.
@@ -412,7 +441,8 @@ public class BatchReader {
                       currentTxn.get().snapshot());
                   final CompletableFuture<List<KeyValue>> newFuture = asyncIterator.asList();
                   fetchFuture.set(newFuture);
-                  newFuture.handle(this);
+                  newFuture.handleAsync(this,
+                          CompletableFuture.delayedExecutor(getWaitTimeWithJitter(attempted), TimeUnit.MILLISECONDS, ses));
                 } else {
                   metrics.rangeGetErrors();
                   toReturn.completeExceptionally(new RuntimeException("nonRetryableError in " +
@@ -452,6 +482,20 @@ public class BatchReader {
       return errorCode < 2000 || errorCode >= 3000;
     }
     return false;
+  }
+
+  /**
+   * A helper method to generate wait time using full jitter.
+   *
+   * @param retry current number of retry.
+   * @return wait time in milliseconds.
+   */
+  private long getWaitTimeWithJitter(final long retry) {
+    // simple check for overflows
+    long expWait = (long) (Math.pow(2, retry)) * DEFAULT_WAIT_BASE_MILLISECONDS;
+    expWait = expWait <= 0 ? maxWaitTime : Math.min(maxWaitTime, expWait);
+
+    return ThreadLocalRandom.current().nextLong(expWait);
   }
 
   /**
