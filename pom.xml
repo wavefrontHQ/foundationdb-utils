@@ -38,7 +38,7 @@
     </distributionManagement>
 
     <properties>
-        <jdk.version>8</jdk.version>
+        <jdk.version>11</jdk.version>
         <doclint>none</doclint>
     </properties>
 
