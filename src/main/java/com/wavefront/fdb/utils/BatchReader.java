@@ -9,8 +9,6 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -84,10 +82,6 @@ public class BatchReader {
    * Max wait time in backoff algorithm in milliseconds.
    */
   private final long maxWaitTime;
-  /**
-   * Single Thread Executor to schedule retry task.
-   */
-  private final ScheduledExecutorService ses = Executors.newSingleThreadScheduledExecutor();
 
   /**
    * Construct a new batch reader.
@@ -350,7 +344,7 @@ public class BatchReader {
                   final CompletableFuture<byte[]> newFuture = currentTxn.get().snapshot().get(key);
                   fetchFuture.set(newFuture);
                   newFuture.handleAsync(this,
-                          CompletableFuture.delayedExecutor(getWaitTimeWithJitter(attempted), TimeUnit.MILLISECONDS, ses));
+                          CompletableFuture.delayedExecutor(getWaitTimeWithJitter(attempted), TimeUnit.MILLISECONDS));
                 } else {
                   metrics.getErrors();
                   toReturn.completeExceptionally(new RuntimeException("nonRetryableError in " +
@@ -442,7 +436,7 @@ public class BatchReader {
                   final CompletableFuture<List<KeyValue>> newFuture = asyncIterator.asList();
                   fetchFuture.set(newFuture);
                   newFuture.handleAsync(this,
-                          CompletableFuture.delayedExecutor(getWaitTimeWithJitter(attempted), TimeUnit.MILLISECONDS, ses));
+                          CompletableFuture.delayedExecutor(getWaitTimeWithJitter(attempted), TimeUnit.MILLISECONDS));
                 } else {
                   metrics.rangeGetErrors();
                   toReturn.completeExceptionally(new RuntimeException("nonRetryableError in " +
