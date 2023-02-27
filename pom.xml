@@ -7,7 +7,7 @@
     <version>1.8-SNAPSHOT</version>
 
     <name>FoundationDB Utils</name>
-    <description>Java utilities for interacting with FoundationDB for Graviton</description>
+    <description>Java utilities for interacting with FoundationDB</description>
     <url>http://www.wavefront.com</url>
     <licenses>
         <license>
