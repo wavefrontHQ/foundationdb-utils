@@ -3,11 +3,11 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.wavefront</groupId>
-    <artifactId>foundationdb-utils</artifactId>
+    <artifactId>foundationdb-utils-v2</artifactId>
     <version>1.8-SNAPSHOT</version>
 
     <name>FoundationDB Utils</name>
-    <description>Java utilities for interacting with FoundationDB</description>
+    <description>Java utilities for interacting with FoundationDB for Graviton</description>
     <url>http://www.wavefront.com</url>
     <licenses>
         <license>
