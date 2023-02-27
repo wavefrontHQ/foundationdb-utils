@@ -75,7 +75,7 @@
                     <useReleaseProfile>false</useReleaseProfile>
                     <releaseProfiles>release</releaseProfiles>
                     <goals>deploy</goals>
-                    <tagNameFormat>v@{project.version}</tagNameFormat>
+                    <tagNameFormat>v@{project.version}-v2</tagNameFormat>
                 </configuration>
             </plugin>
         </plugins>
