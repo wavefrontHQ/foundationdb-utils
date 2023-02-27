@@ -3,7 +3,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.wavefront</groupId>
-    <artifactId>foundationdb-utils</artifactId>
+    <artifactId>foundationdb-utils-v2</artifactId>
     <version>1.8-SNAPSHOT</version>
 
     <name>FoundationDB Utils</name>
@@ -75,7 +75,7 @@
                     <useReleaseProfile>false</useReleaseProfile>
                     <releaseProfiles>release</releaseProfiles>
                     <goals>deploy</goals>
-                    <tagNameFormat>v@{project.version}</tagNameFormat>
+                    <tagNameFormat>v@{project.version}-v2</tagNameFormat>
                 </configuration>
             </plugin>
         </plugins>
