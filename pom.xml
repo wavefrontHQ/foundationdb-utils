@@ -29,14 +29,7 @@
         <url>git@github.com:wavefronthq/foundationdb-utils.git</url>
         <tag>HEAD</tag>
     </scm>
-
-    <distributionManagement>
-        <snapshotRepository>
-            <id>ossrh</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
-        </snapshotRepository>
-    </distributionManagement>
-
+    
     <properties>
         <jdk.version>11</jdk.version>
         <doclint>none</doclint>
@@ -44,9 +37,9 @@
 
     <dependencies>
         <dependency>
-            <groupId>org.foundationdb</groupId>
+            <groupId>com.foundationdb</groupId>
             <artifactId>fdb-java</artifactId>
-            <version>7.2.3</version>
+            <version>7.1.28</version>
         </dependency>
         <dependency>
             <groupId>com.google.code.findbugs</groupId>
@@ -80,6 +73,37 @@
             </plugin>
         </plugins>
     </build>
+    <distributionManagement>
+        <repository>
+            <id>sunnylabs-releases</id>
+            <name>Release Repository</name>
+            <url>https://repo.wavefront.com/content/repositories/releases/</url>
+        </repository>
+        <snapshotRepository>
+            <id>sunnylabs-snapshots</id>
+            <name>Snapshot Repository</name>
+            <url>https://repo.wavefront.com/content/repositories/snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
+
+    <repositories>
+        <repository>
+            <id>sunnylabs-public</id>
+            <name>Wavefront Internal Repository</name>
+            <url>https://repo.wavefront.com/content/groups/public/</url>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+        </repository>
+        <repository>
+            <id>sunnylabs-releases</id>
+            <name>Wavefront Internal Painter Repository</name>
+            <url>https://repo.wavefront.com/content/repositories/releases/</url>
+        </repository>
+    </repositories>
 
     <profiles>
         <profile>

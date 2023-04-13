@@ -10,7 +10,7 @@
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="foundationdb-utils" target="8" />
+      <module name="foundationdb-utils" target="11" />
     </bytecodeTargetLevel>
   </component>
 </project>
